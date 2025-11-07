@@ -5,5 +5,4 @@ datasets.zip
 .venv
 # .gitignore file
 __pycache__/
-data/
-notebooks/
+.ipynb_checkpoints/
