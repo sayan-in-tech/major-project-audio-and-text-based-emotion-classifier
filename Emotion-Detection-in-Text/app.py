@@ -23,7 +23,38 @@ def get_prediction_proba(docx):
     results = pipe_lr.predict_proba([docx])
     return results
 
-emotions_emoji_dict = {"anger": "😠", "disgust": "🤮", "fear": "😨😱", "happy": "🤗", "joy": "😂", "neutral": "😐", "sad": "😔", "sadness": "😔", "shame": "😳", "surprise": "😮"}
+TEXT_TO_VOICE_EMOTION_MAP = {
+    "anger": "angry",
+    "joy": "happy",
+    "fear": "fear",
+    "disgust": "disgust",
+    "sadness": "sad",
+    "shame": "neutral",
+    "surprise": "surprise",
+}
+
+
+def map_text_emotion_to_voice(emotion_label):
+    return TEXT_TO_VOICE_EMOTION_MAP.get(emotion_label, emotion_label)
+
+
+def aggregate_voice_probabilities(prob_matrix, classes):
+    voice_probabilities = {}
+    for cls, prob in zip(classes, prob_matrix[0]):
+        voice_label = map_text_emotion_to_voice(cls)
+        voice_probabilities[voice_label] = voice_probabilities.get(voice_label, 0.0) + prob
+    return voice_probabilities
+
+
+emotions_emoji_dict = {
+    "angry": "😠",
+    "disgust": "🤮",
+    "fear": "😨😱",
+    "happy": "🤗",
+    "neutral": "😐",
+    "sad": "😔",
+    "surprise": "😮",
+}
 
 # Main Application
 def main():
@@ -44,24 +75,32 @@ def main():
             col1, col2 = st.columns(2)
 
             prediction = predict_emotions(raw_text)
+            mapped_prediction = map_text_emotion_to_voice(prediction)
             probability = get_prediction_proba(raw_text)
+            voice_probabilities = aggregate_voice_probabilities(probability, pipe_lr.classes_)
+            max_voice_probability = max(voice_probabilities.values()) if voice_probabilities else 0.0
 
-            add_prediction_details(raw_text, prediction, np.max(probability), datetime.now(IST))
+            add_prediction_details(raw_text, mapped_prediction, max_voice_probability, datetime.now(IST))
 
             with col1:
                 st.success("Original Text")
                 st.write(raw_text)
 
                 st.success("Prediction")
-                emoji_icon = emotions_emoji_dict[prediction]
-                st.write("{}:{}".format(prediction, emoji_icon))
-                st.write("Confidence:{}".format(np.max(probability)))
+                emoji_icon = emotions_emoji_dict.get(mapped_prediction, "")
+                st.write("{}:{}".format(mapped_prediction, emoji_icon))
+                st.write("Confidence:{}".format(max_voice_probability))
 
             with col2:
                 st.success("Prediction Probability")
-                proba_df = pd.DataFrame(probability, columns=pipe_lr.classes_)
-                proba_df_clean = proba_df.T.reset_index()
-                proba_df_clean.columns = ["emotions", "probability"]
+                proba_df_clean = (
+                    pd.DataFrame(
+                        [(emotion, prob) for emotion, prob in voice_probabilities.items()],
+                        columns=["emotions", "probability"],
+                    )
+                    .sort_values("probability", ascending=False)
+                    .reset_index(drop=True)
+                )
 
                 fig = alt.Chart(proba_df_clean).mark_bar().encode(x='emotions', y='probability', color='emotions')
                 st.altair_chart(fig, use_container_width=True)
