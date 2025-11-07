@@ -41,13 +41,115 @@ BASE_DIR = Path(__file__).resolve().parent
 TEXT_MODEL_DIR = BASE_DIR / "Emotion-Detection-in-Text"
 TEXT_MODEL_PATH = TEXT_MODEL_DIR / "models" / "emotion_classifier_pipe_lr.pkl"
 # Set page config
-st.set_page_config(page_title="Emotion Recognition from Speech", page_icon="🎧", layout="centered")
+st.set_page_config(page_title="Emotion Recognition from Speech", page_icon="🎧", layout="wide", initial_sidebar_state="collapsed")
+
+# Custom CSS for dark theme styling
+st.markdown("""
+    <style>
+    .main {
+        padding: 2rem 1rem;
+        background-color: #0E1117;
+    }
+    .stApp {
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    }
+    [data-testid="stAppViewContainer"] {
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    }
+    .title-container {
+        background: rgba(26, 26, 46, 0.8);
+        padding: 2rem;
+        border-radius: 20px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        margin-bottom: 2rem;
+        text-align: center;
+        border: 1px solid rgba(102, 126, 234, 0.3);
+    }
+    .emotion-card {
+        background: rgba(26, 26, 46, 0.8);
+        padding: 1.5rem;
+        border-radius: 15px;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
+        margin: 1rem 0;
+        border: 1px solid rgba(102, 126, 234, 0.2);
+    }
+    .emotion-label {
+        font-size: 2.5rem;
+        font-weight: bold;
+        margin: 0.5rem 0;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+    }
+    .confidence-label {
+        font-size: 2rem;
+        font-weight: bold;
+        margin: 0.5rem 0;
+    }
+    .section-header {
+        font-size: 1.8rem;
+        font-weight: bold;
+        margin: 1.5rem 0 1rem 0;
+        color: #a0a0d0;
+    }
+    .upload-section {
+        background: rgba(26, 26, 46, 0.8);
+        padding: 2rem;
+        border-radius: 15px;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
+        margin: 2rem 0;
+        border: 1px solid rgba(102, 126, 234, 0.2);
+    }
+    .transcription-box {
+        background: rgba(15, 52, 96, 0.6);
+        padding: 1.5rem;
+        border-radius: 10px;
+        border-left: 4px solid #667eea;
+        font-size: 1.1rem;
+        line-height: 1.6;
+        color: #e0e0e0;
+    }
+    .final-result {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 20px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        text-align: center;
+        margin: 2rem 0;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .final-emotion {
+        font-size: 3rem;
+        font-weight: bold;
+        margin: 1rem 0;
+        text-transform: uppercase;
+        letter-spacing: 3px;
+    }
+    .final-confidence {
+        font-size: 2.5rem;
+        font-weight: bold;
+        margin: 1rem 0;
+    }
+    /* Dark theme for Streamlit components */
+    .stMarkdown {
+        color: #e0e0e0;
+    }
+    h1, h2, h3, h4, h5, h6 {
+        color: #e0e0e0 !important;
+    }
+    p {
+        color: #b0b0b0 !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 # 🎵 Title Section
 st.markdown(
     """
-    <h1 style='text-align: center;'>🎧 Emotion Recognition from Speech</h1>
-    <p style='text-align: center; font-size: 18px;'>Upload any audio file to detect the emotion in the voice!</p>
+    <div class="title-container">
+        <h1 style='color: #a0a0ff; margin-bottom: 0.5rem;'>🎧 Emotion Recognition from Speech</h1>
+        <p style='font-size: 1.2rem; color: #b0b0d0; margin-top: 0.5rem;'>Upload any audio file to detect the emotion in the voice!</p>
+    </div>
     """,
     unsafe_allow_html=True
 )
@@ -117,8 +219,8 @@ def aggregate_voice_probabilities(prob_matrix, classes):
 
 
 def aggregate_sentiment_labels(audio_label: str, audio_conf: float, text_label: str, text_conf: float):
-    w_audio = 0.58
-    w_text = 0.42
+    w_audio = 0.72
+    w_text = 0.28
     if audio_label == text_label:
         final_label = audio_label
         final_conf = (w_audio * audio_conf + w_text * text_conf) / (w_audio + w_text)
@@ -160,10 +262,10 @@ def enhance_features(X):
 def predict_audio_emotion(file):
     try:
         if model is None:
-            return None, None
+            return None, None, {}
         features = extract_features(file)
         if features is None:
-            return None, None
+            return None, None, {}
 
         enhanced = enhance_features(features)
 
@@ -175,14 +277,22 @@ def predict_audio_emotion(file):
         enhanced_std = enhanced_std[:, :, :40]
         input_data = np.expand_dims(enhanced_std[:, :, 0], axis=0)
 
-        preds = model.predict(input_data)
+        preds = model.predict(input_data, verbose=0)
         predicted_index = np.argmax(preds)
         emotion = le.inverse_transform([predicted_index])[0]
         confidence = float(np.max(preds))
-        return emotion, confidence
+        
+        # Create probability dictionary for all emotions
+        all_emotions = le.classes_
+        audio_probabilities = {}
+        for idx, prob in enumerate(preds[0]):
+            emotion_name = le.inverse_transform([idx])[0]
+            audio_probabilities[emotion_name] = float(prob)
+        
+        return emotion, confidence, audio_probabilities
     except Exception as e:
         st.error(f"❌ Prediction error: {e}")
-        return None, None
+        return None, None, {}
 
 
 def transcribe_audio(file_path: str) -> str:
@@ -211,7 +321,11 @@ def predict_text_emotion(text: str):
         return None, None, {}
 
 # 📤 File Upload Section
-st.markdown("### 📤 Upload your audio file below:")
+st.markdown("""
+    <div class="upload-section">
+        <h2 style='text-align: center; color: #a0a0ff; margin-bottom: 1rem;'>📤 Upload Your Audio File</h2>
+    </div>
+""", unsafe_allow_html=True)
 uploaded_file = st.file_uploader(
     "Upload audio file",
     type=["wav", "mp3", "flac", "ogg", "m4a", "aac"],
@@ -240,57 +354,118 @@ if uploaded_file is not None:
             wav_path = tmp_file.name
 
     if wav_path:
+        st.markdown("<br>", unsafe_allow_html=True)
         st.audio(wav_path, format="audio/wav")
 
-        with st.spinner("🔍 Analyzing emotion..."):
+        with st.spinner("🔍 Analyzing emotion from audio and text..."):
             time.sleep(1.2)
-            audio_label, audio_confidence = predict_audio_emotion(wav_path)
+            audio_label, audio_confidence, audio_probabilities = predict_audio_emotion(wav_path)
             transcript = transcribe_audio(wav_path)
             text_label, text_confidence, text_probabilities = predict_text_emotion(transcript)
 
         if audio_label:
-            st.markdown("---")
-            st.markdown("#### 🔊 Voice Emotion Analysis")
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("""
+                <div class="emotion-card">
+                    <h2 class="section-header" style='color: #667eea;'>🔊 Voice Emotion Analysis</h2>
+                </div>
+            """, unsafe_allow_html=True)
+            
             audio_cols = st.columns([1, 1])
+            emotion_colors = {
+                "angry": "#FF4444",
+                "happy": "#4CAF50",
+                "sad": "#2196F3",
+                "fear": "#9C27B0",
+                "disgust": "#FF9800",
+                "surprise": "#00BCD4",
+                "neutral": "#9E9E9E"
+            }
+            emotion_color = emotion_colors.get(audio_label.lower(), "#667eea")
 
             with audio_cols[0]:
                 st.markdown(
-                    f"<h3 style='color: #1F77B4;'>Emotion:</h3><h2 style='color: #FF4B4B;'>{audio_label.upper()}</h2>",
+                    f"""
+                    <div style='text-align: center; padding: 1rem; background: linear-gradient(135deg, {emotion_color}33 0%, {emotion_color}55 100%); border-radius: 10px; border: 1px solid {emotion_color}66;'>
+                        <h3 style='color: #d0d0d0; margin-bottom: 0.5rem;'>Emotion</h3>
+                        <h2 class="emotion-label" style='color: {emotion_color};'>{audio_label.upper()}</h2>
+                    </div>
+                    """,
                     unsafe_allow_html=True
                 )
             with audio_cols[1]:
                 st.markdown(
-                    f"<h3 style='color: #1F77B4;'>Confidence:</h3><h2 style='color: #2CA02C;'>{audio_confidence * 100:.2f}%</h2>",
+                    f"""
+                    <div style='text-align: center; padding: 1rem; background: linear-gradient(135deg, #4CAF5033 0%, #4CAF5055 100%); border-radius: 10px; border: 1px solid #4CAF5066;'>
+                        <h3 style='color: #d0d0d0; margin-bottom: 0.5rem;'>Confidence</h3>
+                        <h2 class="confidence-label" style='color: #4CAF50;'>{audio_confidence * 100:.2f}%</h2>
+                    </div>
+                    """,
                     unsafe_allow_html=True
                 )
+            
+            # Voice Probabilities Chart
+            if audio_probabilities:
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown("### 📊 Voice Emotion Probabilities")
+                audio_proba_df = (
+                    pd.DataFrame.from_dict(audio_probabilities, orient="index", columns=["probability"])
+                    .sort_values("probability", ascending=False)
+                )
+                st.bar_chart(audio_proba_df, height=300, use_container_width=True)
 
         if transcript:
-            st.markdown("---")
-            st.markdown("#### 📝 Transcription")
-            st.info(transcript)
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("""
+                <div class="emotion-card">
+                    <h2 class="section-header" style='color: #667eea;'>📝 Transcription</h2>
+                    <div class="transcription-box">
+                        {transcript}
+                    </div>
+                </div>
+            """.format(transcript=transcript), unsafe_allow_html=True)
 
         if text_label:
-            st.markdown("---")
-            st.markdown("#### 📚 Text Emotion Analysis")
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("""
+                <div class="emotion-card">
+                    <h2 class="section-header" style='color: #667eea;'>📚 Text Emotion Analysis</h2>
+                </div>
+            """, unsafe_allow_html=True)
+            
             text_cols = st.columns([1, 1])
+            text_emotion_color = emotion_colors.get(text_label.lower(), "#667eea")
 
             with text_cols[0]:
                 st.markdown(
-                    f"<h3 style='color: #1F77B4;'>Emotion:</h3><h2 style='color: #FF4B4B;'>{text_label.upper()}</h2>",
+                    f"""
+                    <div style='text-align: center; padding: 1rem; background: linear-gradient(135deg, {text_emotion_color}22 0%, {text_emotion_color}44 100%); border-radius: 10px;'>
+                        <h3 style='color: #555; margin-bottom: 0.5rem;'>Emotion</h3>
+                        <h2 class="emotion-label" style='color: {text_emotion_color};'>{text_label.upper()}</h2>
+                    </div>
+                    """,
                     unsafe_allow_html=True
                 )
             with text_cols[1]:
                 st.markdown(
-                    f"<h3 style='color: #1F77B4;'>Confidence:</h3><h2 style='color: #2CA02C;'>{text_confidence * 100:.2f}%</h2>",
+                    f"""
+                    <div style='text-align: center; padding: 1rem; background: linear-gradient(135deg, #4CAF5022 0%, #4CAF5044 100%); border-radius: 10px;'>
+                        <h3 style='color: #555; margin-bottom: 0.5rem;'>Confidence</h3>
+                        <h2 class="confidence-label" style='color: #4CAF50;'>{text_confidence * 100:.2f}%</h2>
+                    </div>
+                    """,
                     unsafe_allow_html=True
                 )
 
+            # Text Probabilities Chart
             if text_probabilities:
-                proba_df = (
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown("### 📊 Text Emotion Probabilities")
+                text_proba_df = (
                     pd.DataFrame.from_dict(text_probabilities, orient="index", columns=["probability"])
                     .sort_values("probability", ascending=False)
                 )
-                st.bar_chart(proba_df)
+                st.bar_chart(text_proba_df, height=300, use_container_width=True)
         else:
             if pipe_lr is None:
                 st.warning("⚠️ Text emotion model unavailable. Check configuration.")
@@ -304,22 +479,15 @@ if uploaded_file is not None:
             final_label, final_confidence = aggregate_sentiment_labels(
                 audio_label, audio_confidence, text_label, text_confidence
             )
-            st.markdown("---")
-            st.markdown("### 🧠 Final Aggregated Emotion")
-            final_cols = st.columns([1, 1])
-
-            with final_cols[0]:
-                st.markdown(
-                    f"<h3 style='color: #1F77B4;'>Emotion:</h3><h2 style='color: #FF4B4B;'>{final_label.upper()}</h2>",
-                    unsafe_allow_html=True
-                )
-            with final_cols[1]:
-                st.markdown(
-                    f"<h3 style='color: #1F77B4;'>Confidence:</h3><h2 style='color: #2CA02C;'>{final_confidence * 100:.2f}%</h2>",
-                    unsafe_allow_html=True
-                )
-
-            st.balloons()
+            st.markdown("<br>", unsafe_allow_html=True)
+            final_emotion_color = emotion_colors.get(final_label.lower(), "#667eea")
+            st.markdown(f"""
+                <div class="final-result">
+                    <h2 style='margin-bottom: 1rem; font-size: 2rem;'>🧠 Final Aggregated Emotion</h2>
+                    <div class="final-emotion" style='color: white;'>{final_label.upper()}</div>
+                    <div class="final-confidence" style='color: rgba(255, 255, 255, 0.9);'>{final_confidence * 100:.2f}%</div>
+                </div>
+            """, unsafe_allow_html=True)
 
         if not audio_label:
             st.warning("⚠️ Unable to detect voice emotion. Please try another file.")
